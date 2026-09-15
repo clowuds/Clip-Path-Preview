@@ -518,8 +518,8 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
 
 /* ── Mobile (≤600px) ── */
 @media (max-width: 600px) {
-  ::-webkit-scrollbar { width: 20px; }
-  ::-webkit-scrollbar-thumb { border: 4px solid var(--surface2); border-radius: 15px; }
+  ::-webkit-scrollbar { width: 30px; }
+  ::-webkit-scrollbar-thumb { border: 6px solid var(--surface2); border-radius: 15px; }
   ::-webkit-scrollbar-track { border-radius: 15px; }
 
   html, body {
@@ -530,7 +530,7 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
   body {
     display: flex;
     flex-direction: column;
-    height: 100svh;
+    height: 100dvh; /* dvh tracks the visual viewport — stays correct when keyboard opens */
   }
 
   /* Compact header */
@@ -546,10 +546,11 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
   .header-link svg { width: 14px; height: 14px; }
   .header-link { padding: 5px 8px; gap: 0; font-size: 0; }
 
-  /* Preview — fixed height at top, no scroll */
+  /* Preview — fixed height, never shrinks when keyboard opens */
   #preview-pane {
     flex-shrink: 0;
-    height: 42svh;
+    height: 42svh; /* svh = layout viewport = stable, ignores keyboard */
+    min-height: 160px; /* floor so it never collapses to nothing */
     padding: 12px;
     gap: 10px;
     overflow: hidden;
@@ -578,28 +579,30 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    height: 0; /* force flex child to shrink properly */
+    min-height: 0;
   }
 
-  /* Scrollable area grows to fill between panel top and output bottom */
+  /* Scrollable area — grows to fill space between panel top and output */
   #panel-scroll {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    /* padding-bottom ensures last slider isn't hidden under the sticky bar */
+    padding-bottom: 8px;
   }
 
-  #sliders-section {
-    flex: none;
-  }
+  #sliders-section { flex: none; }
+  #sliders-section .section { flex: none; }
 
-  #sliders-section .section {
-    flex: none;
-  }
-
-  /* Output pinned to bottom of panel */
+  /* Output — sticky to the bottom of the panel, always visible */
   #output-section {
     flex-shrink: 0;
     margin-top: 0;
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    z-index: 10;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.35);
   }
 }
 
@@ -719,6 +722,18 @@ const PRESETS = [
   { name: 'cross',
     value: 'polygon(35% 0%, 65% 0%, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0% 65%, 0% 35%, 35% 35%)' },
   { name: 'path()',     value: "path('M 130 0 L 260 260 L 0 260 Z')" },
+  { name: 'blob',
+    value: "path('M 130 10 C 180 0, 240 40, 250 90 C 265 145, 245 185, 220 215 C 195 248, 160 262, 130 258 C 100 262, 65 248, 40 215 C 15 185, -5 145, 10 90 C 20 40, 80 0, 130 10 Z')" },
+  { name: 'splat',
+    value: "path('M 130 5 C 158 -5, 178 18, 200 15 C 228 12, 248 38, 245 62 C 242 84, 262 100, 258 125 C 254 152, 232 162, 235 185 C 238 210, 218 235, 195 240 C 170 246, 152 228, 130 230 C 108 228, 90 246, 65 240 C 42 235, 22 210, 25 185 C 28 162, 8 152, 4 125 C 0 100, 18 84, 15 62 C 12 38, 32 12, 60 15 C 82 18, 102 -5, 130 5 Z')" },
+  { name: 'wave-card',
+    value: "path('M 0 40 C 40 10, 80 70, 130 40 C 180 10, 220 70, 260 40 L 260 220 C 220 250, 180 190, 130 220 C 80 250, 40 190, 0 220 Z')" },
+  { name: 'shield',
+    value: "path('M 130 4 C 130 4, 248 40, 248 40 L 248 148 C 248 200, 130 258, 130 258 C 130 258, 12 200, 12 148 L 12 40 Z')" },
+  { name: 'flower',
+    value: "path('M 130 130 C 130 80, 160 30, 130 10 C 100 30, 130 80, 130 130 C 80 130, 30 100, 10 130 C 30 160, 80 130, 130 130 C 130 180, 100 230, 130 250 C 160 230, 130 180, 130 130 C 180 130, 230 160, 250 130 C 230 100, 180 130, 130 130 Z')" },
+  { name: 'ribbon',
+    value: "path('M 0 80 C 50 40, 80 120, 130 80 C 180 40, 210 120, 260 80 L 260 100 C 210 140, 180 60, 130 100 C 80 140, 50 60, 0 100 Z')" },
 ];
 
 // ── Token parser ──────────────────────────────────────────────────────────────
