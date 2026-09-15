@@ -30,12 +30,17 @@
   --sans: system-ui, -apple-system, sans-serif;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   -webkit-tap-highlight-color: transparent;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 1fr 380px;
   grid-template-rows: 52px 1fr;
@@ -208,6 +213,16 @@ header h1 { font-size: 14px; font-weight: 600; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: 100%;
+}
+
+/* Scrollable middle area */
+#panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .section {
@@ -293,14 +308,12 @@ header h1 { font-size: 14px; font-weight: 600; }
 
 /* ── Sliders ── */
 #sliders-section {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 #sliders-section .section {
   flex: 1;
-  overflow-y: auto;
   border-bottom: none;
 }
 
@@ -466,7 +479,6 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
   padding: 14px 18px;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  margin-top: auto;
 }
 #output-code {
   font-family: var(--mono);
@@ -499,16 +511,105 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
 #copy-btn.copied { color: var(--success); border-color: var(--success); background: rgba(74, 222, 128, 0.1); }
 
 /* scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--surface2); border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 5px; border: 2px solid var(--surface2); opacity: 0.7; }
+::-webkit-scrollbar-thumb:hover { background: var(--grad-b); }
+
+/* ── Mobile (≤600px) ── */
+@media (max-width: 600px) {
+  ::-webkit-scrollbar { width: 20px; }
+  ::-webkit-scrollbar-thumb { border: 4px solid var(--surface2); border-radius: 15px; }
+  ::-webkit-scrollbar-track { border-radius: 15px; }
+
+  html, body {
+    overflow: hidden;
+    height: 100%;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100svh;
+  }
+
+  /* Compact header */
+  header {
+    grid-column: unset;
+    flex-shrink: 0;
+    height: 44px;
+    padding: 0 14px;
+    gap: 8px;
+  }
+  header h1 { font-size: 13px; }
+  .badge { display: none; }
+  .header-link svg { width: 14px; height: 14px; }
+  .header-link { padding: 5px 8px; gap: 0; font-size: 0; }
+
+  /* Preview — fixed height at top, no scroll */
+  #preview-pane {
+    flex-shrink: 0;
+    height: 42svh;
+    padding: 12px;
+    gap: 10px;
+    overflow: hidden;
+    justify-content: center;
+  }
+
+  /* Box fills the pane square */
+  #preview-box-wrap {
+    width: min(calc(42svh - 80px), calc(100vw - 24px));
+    height: min(calc(42svh - 80px), calc(100vw - 24px));
+    flex-shrink: 0;
+  }
+
+  #preview-box {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .size-row { display: none; }
+
+  /* Panel fills remaining height as a flex column */
+  #panel {
+    flex: 1;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 0; /* force flex child to shrink properly */
+  }
+
+  /* Scrollable area grows to fill between panel top and output bottom */
+  #panel-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  #sliders-section {
+    flex: none;
+  }
+
+  #sliders-section .section {
+    flex: none;
+  }
+
+  /* Output pinned to bottom of panel */
+  #output-section {
+    flex-shrink: 0;
+    margin-top: 0;
+  }
+}
+
 </style>
 </head>
 <body>
 
 <header>
   <h1>Clip Path Previewer</h1>
-  <span class="badge">v1.2.0</span>
+  <span class="badge">v1.3.0</span>
   <div class="header-links">
     <a class="header-link" href="https://github.com/clowuds" target="_blank" rel="noopener" title="GitHub">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -548,45 +649,49 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
 
 <aside id="panel">
 
-  <!-- Presets -->
-  <div class="section">
-    <div class="section-title">Presets</div>
-    <div id="preset-tabs"></div>
-  </div>
+  <div id="panel-scroll">
 
-  <!-- Editor -->
-  <div class="section">
-    <div class="section-title">Value</div>
-    <div id="code-area-wrap">
-      <textarea id="code-area" spellcheck="false" rows="3"></textarea>
-      <div id="code-area-resizer">
-        <svg width="24" height="4" viewBox="0 0 24 4" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="0" y="0" width="24" height="1.5" rx="1" fill="var(--dim)"/>
-          <rect x="0" y="2.5" width="24" height="1.5" rx="1" fill="var(--dim)"/>
-        </svg>
+    <!-- Presets -->
+    <div class="section">
+      <div class="section-title">Presets</div>
+      <div id="preset-tabs"></div>
+    </div>
+
+    <!-- Editor -->
+    <div class="section">
+      <div class="section-title">Value</div>
+      <div id="code-area-wrap">
+        <textarea id="code-area" spellcheck="false" rows="3"></textarea>
+        <div id="code-area-resizer">
+          <svg width="24" height="4" viewBox="0 0 24 4" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="24" height="1.5" rx="1" fill="var(--dim)"/>
+            <rect x="0" y="2.5" width="24" height="1.5" rx="1" fill="var(--dim)"/>
+          </svg>
+        </div>
+      </div>
+      <div id="parse-error"></div>
+    </div>
+
+    <!-- Add variable -->
+    <div id="add-var-wrap">
+      <div class="section-title" style="margin-bottom:8px">Add variable</div>
+      <div id="add-var-form">
+        <input id="add-var-input" type="text" placeholder="e.g.  30%  or  1px  or  45deg">
+        <button id="add-var-btn">Insert</button>
       </div>
     </div>
-    <div id="parse-error"></div>
-  </div>
 
-  <!-- Add variable -->
-  <div id="add-var-wrap">
-    <div class="section-title" style="margin-bottom:8px">Add variable</div>
-    <div id="add-var-form">
-      <input id="add-var-input" type="text" placeholder="e.g.  30%  or  1px  or  45deg">
-      <button id="add-var-btn">Insert</button>
+    <!-- Sliders -->
+    <div id="sliders-section">
+      <div class="section">
+        <div class="section-title">Parameters — every numeric token</div>
+        <div id="sliders-inner"></div>
+      </div>
     </div>
-  </div>
 
-  <!-- Sliders -->
-  <div id="sliders-section">
-    <div class="section">
-      <div class="section-title">Parameters — every numeric token</div>
-      <div id="sliders-inner"></div>
-    </div>
-  </div>
+  </div><!-- /#panel-scroll -->
 
-  <!-- Output -->
+  <!-- Output — pinned to bottom -->
   <div id="output-section">
     <div id="output-code"></div>
     <button id="copy-btn">Copy CSS</button>
