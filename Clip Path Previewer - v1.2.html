@@ -114,10 +114,53 @@ header h1 { font-size: 14px; font-weight: 600; }
   background: linear-gradient(135deg, var(--grad-a), var(--grad-b) 50%, var(--grad-c));
   transition: clip-path .2s ease;
   position: relative;
+}
+#preview-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Vertex overlay ── */
+#preview-box-wrap {
+  position: relative;
   z-index: 1;
   flex-shrink: 0;
 }
-#preview-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#vertex-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+.v-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  transform: translate(-50%, -50%);
+  transition: background .12s, border-color .12s, transform .12s;
+}
+.v-dot.active {
+  background: var(--danger);
+  border-color: rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%) scale(1.5);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.35);
+}
+
+/* ── Slider red dot ── */
+.slider-block .edit-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity .15s, transform .15s;
+}
+.slider-block.editing .edit-dot {
+  opacity: 1;
+  transform: scale(1);
+}
 
 .preview-controls {
   position: relative;
@@ -483,7 +526,10 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
 </header>
 
 <main id="preview-pane">
-  <div id="preview-box"></div>
+  <div id="preview-box-wrap">
+    <div id="preview-box"></div>
+    <div id="vertex-overlay"></div>
+  </div>
 
   <div class="preview-controls">
     <button class="ctrl-btn active" id="btn-gradient">gradient</button>
@@ -699,6 +745,190 @@ const errEl     = document.getElementById('parse-error');
 const wInput    = document.getElementById('w-input');
 const hInput    = document.getElementById('h-input');
 
+// ── Vertex overlay ───────────────────────────────────────────────────────────
+const vertexOverlay = document.getElementById('vertex-overlay');
+let activeTokenIdx = -1;
+let overlayDots = [];
+let overlayTimer = null;
+
+// Convert a CSS value string + unit to a % relative to box dimension
+function toPercent(num, unit, dim) {
+  if (unit === '%')  return num;
+  if (unit === 'px') return (num / dim) * 100;
+  return num; // fallback
+}
+
+// Parse the current clip-path string into a list of {x, y} percent points
+// Returns array of {x, y, tokenIndices:[i,j]} — tokenIndices are which tokens
+// in the global `tokens` array correspond to this dot.
+function resolveVertexPoints(val, toks, boxW, boxH) {
+  const v = val.trim().toLowerCase();
+  const points = [];
+
+  if (v.startsWith('polygon(')) {
+    // tokens alternate x, y
+    for (let i = 0; i + 1 < toks.length; i += 2) {
+      const tx = toks[i], ty = toks[i + 1];
+      points.push({
+        x: toPercent(tx.num, tx.unit, boxW),
+        y: toPercent(ty.num, ty.unit, boxH),
+        tokenIndices: [i, i + 1]
+      });
+    }
+  }
+
+  else if (v.startsWith('circle(')) {
+    // circle(r at cx cy) — tokens: [r, cx, cy]
+    if (toks.length >= 3) {
+      const r  = toks[0], cx = toks[1], cy = toks[2];
+      const cxP = toPercent(cx.num, cx.unit, boxW);
+      const cyP = toPercent(cy.num, cy.unit, boxH);
+      const rP  = toPercent(r.num,  r.unit,  Math.min(boxW, boxH));
+      // center dot
+      points.push({ x: cxP, y: cyP, tokenIndices: [1, 2] });
+      // radius handle (right side)
+      points.push({ x: cxP + rP, y: cyP, tokenIndices: [0] });
+    } else if (toks.length === 1) {
+      // circle(r) with no at — center is 50% 50%
+      const rP = toPercent(toks[0].num, toks[0].unit, Math.min(boxW, boxH));
+      points.push({ x: 50, y: 50, tokenIndices: [] });
+      points.push({ x: 50 + rP, y: 50, tokenIndices: [0] });
+    }
+  }
+
+  else if (v.startsWith('ellipse(')) {
+    // ellipse(rx ry at cx cy) — tokens: [rx, ry, cx, cy]
+    if (toks.length >= 4) {
+      const rx = toks[0], ry = toks[1], cx = toks[2], cy = toks[3];
+      const cxP = toPercent(cx.num, cx.unit, boxW);
+      const cyP = toPercent(cy.num, cy.unit, boxH);
+      const rxP = toPercent(rx.num, rx.unit, boxW);
+      const ryP = toPercent(ry.num, ry.unit, boxH);
+      points.push({ x: cxP,       y: cyP,       tokenIndices: [2, 3] }); // center
+      points.push({ x: cxP + rxP, y: cyP,       tokenIndices: [0] });    // rx handle
+      points.push({ x: cxP,       y: cyP - ryP, tokenIndices: [1] });    // ry handle
+    }
+  }
+
+  else if (v.startsWith('inset(')) {
+    // inset(top right bottom left) — tokens: [top, right, bottom, left, optional round]
+    // show corners of the inset rectangle
+    const top    = toks[0] ? toPercent(toks[0].num, toks[0].unit, boxH) : 0;
+    const right  = toks[1] ? toPercent(toks[1].num, toks[1].unit, boxW) : top;
+    const bottom = toks[2] ? toPercent(toks[2].num, toks[2].unit, boxH) : top;
+    const left   = toks[3] ? toPercent(toks[3].num, toks[3].unit, boxW) : right;
+    const l = left, r = 100 - right, t = top, b = 100 - bottom;
+    points.push({ x: l, y: t, tokenIndices: [0, 3] }); // top-left (top+left)
+    points.push({ x: r, y: t, tokenIndices: [0, 1] }); // top-right (top+right)
+    points.push({ x: r, y: b, tokenIndices: [1, 2] }); // bottom-right
+    points.push({ x: l, y: b, tokenIndices: [2, 3] }); // bottom-left
+  }
+
+  else if (v.startsWith('path(')) {
+    // parse SVG path commands for M, L, C, Q, A, Z
+    const pathStr = val.replace(/^path\s*\(\s*['"]?/i, '').replace(/['"]?\s*\)$/, '');
+    const cmdRe = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g;
+    let cx = 0, cy = 0;
+    let cm;
+    while ((cm = cmdRe.exec(pathStr)) !== null) {
+      const cmd = cm[1];
+      const nums = (cm[2].match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+      const toBoxPct = (n, isY) => (n / (isY ? boxH : boxW)) * 100;
+      if (cmd === 'M' || cmd === 'L') {
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          cx = nums[i]; cy = nums[i+1];
+          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+        }
+      } else if (cmd === 'm' || cmd === 'l') {
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          cx += nums[i]; cy += nums[i+1];
+          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+        }
+      } else if (cmd === 'H') { nums.forEach(n => { cx = n; points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] }); }); }
+      else if (cmd === 'V') { nums.forEach(n => { cy = n; points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] }); }); }
+      else if (cmd === 'C') {
+        for (let i = 0; i + 5 < nums.length; i += 6) {
+          cx = nums[i+4]; cy = nums[i+5];
+          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+        }
+      } else if (cmd === 'Q') {
+        for (let i = 0; i + 3 < nums.length; i += 4) {
+          cx = nums[i+2]; cy = nums[i+3];
+          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+        }
+      } else if (cmd === 'A') {
+        for (let i = 0; i + 6 < nums.length; i += 7) {
+          cx = nums[i+5]; cy = nums[i+6];
+          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+        }
+      }
+    }
+  }
+
+  else if (v.startsWith('shape(')) {
+    // shape(from X Y, line to X Y, arc to X Y of R, ...)
+    // tokens: from X, from Y, to X, to Y, ... with possible arc radius tokens
+    // The 'at' keyword tokens are center coords for arc, not path points
+    // We show every 'from'/'to' pair
+    // Walk tokens and group by label
+    for (let i = 0; i + 1 < toks.length; i += 2) {
+      const tx = toks[i], ty = toks[i + 1];
+      // skip arc radius tokens (unit %, but label is 'arc radius')
+      if (tx.label === 'arc radius' || ty.label === 'arc radius') { i -= 1; continue; }
+      // skip center X/Y tokens
+      if (tx.label === 'center X') { i -= 1; continue; }
+      points.push({
+        x: toPercent(tx.num, tx.unit, boxW),
+        y: toPercent(ty.num, ty.unit, boxH),
+        tokenIndices: [i, i + 1]
+      });
+    }
+  }
+
+  return points;
+}
+
+function renderOverlay(activeIdx) {
+  const boxW = box.offsetWidth  || 260;
+  const boxH = box.offsetHeight || 260;
+  const pts = resolveVertexPoints(currentValue, tokens, boxW, boxH);
+
+  // If dot count changed (preset switch etc), rebuild from scratch
+  if (pts.length !== overlayDots.length) {
+    vertexOverlay.innerHTML = '';
+    overlayDots = [];
+    pts.forEach(pt => {
+      const dot = document.createElement('div');
+      dot.className = 'v-dot';
+      dot.style.left = pt.x + '%';
+      dot.style.top  = pt.y + '%';
+      vertexOverlay.appendChild(dot);
+      overlayDots.push({ dot, pt });
+    });
+  }
+
+  // Update positions and active state in-place — no DOM teardown
+  overlayDots.forEach(({ dot }, pi) => {
+    const pt = pts[pi];
+    dot.style.left = pt.x + '%';
+    dot.style.top  = pt.y + '%';
+    const isActive = activeIdx >= 0 && pt.tokenIndices.includes(activeIdx);
+    dot.classList.toggle('active', isActive);
+  });
+}
+
+function showOverlay(activeIdx) {
+  clearTimeout(overlayTimer);
+  renderOverlay(activeIdx);
+}
+
+function hideOverlay() {
+  overlayTimer = setTimeout(() => {
+    vertexOverlay.innerHTML = '';
+    overlayDots = [];
+  }, 800);
+}
+
 // ── Apply & render ────────────────────────────────────────────────────────────
 function apply(val, fromSlider = false) {
   box.style.clipPath = val;
@@ -722,6 +952,7 @@ function esc(s) {
 
 // ── Build sliders ─────────────────────────────────────────────────────────────
 function buildSliders() {
+  renderOverlay(-1);
   slidersEl.innerHTML = '';
   if (tokens.length === 0) {
     slidersEl.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:8px 0">No numeric tokens found.</p>';
@@ -733,6 +964,7 @@ function buildSliders() {
     block.className = 'slider-block';
     block.innerHTML = `
       <div class="slider-top">
+        <span class="edit-dot"></span>
         <span class="token-keyword">${esc(tok.unit || '#')}</span>
         <span class="token-context">${esc(tok.label)}</span>
         <span class="slider-val-display" id="val-${i}">${tok.num}${tok.unit}</span>
@@ -766,9 +998,13 @@ function buildSliders() {
       currentValue = rebuildString(currentValue, tokens);
       codeArea.value = currentValue;
       apply(currentValue, true);
+      showOverlay(i);
       block.classList.add('editing');
       clearTimeout(block._editTimer);
-      block._editTimer = setTimeout(() => block.classList.remove('editing'), 600);
+      block._editTimer = setTimeout(() => {
+        block.classList.remove('editing');
+        hideOverlay();
+      }, 600);
     });
 
     // toggle range editor
