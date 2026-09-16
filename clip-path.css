@@ -543,15 +543,15 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 10px; }
-::-webkit-scrollbar-track { background: var(--surface2); border-radius: 5px; }
+::-webkit-scrollbar-track { background: var(--surface2); border-radius: 5px 0 0 5px; }
 ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 5px; border: 2px solid var(--surface2); opacity: 0.7; }
 ::-webkit-scrollbar-thumb:hover { background: var(--grad-b); }
 
 /* ── Mobile (≤600px) ── */
 @media (max-width: 600px) {
-  ::-webkit-scrollbar { width: 20px; }
-  ::-webkit-scrollbar-thumb { border: 6px solid var(--surface2); border-radius: 15px; }
-  ::-webkit-scrollbar-track { border-radius: 15px; }
+  ::-webkit-scrollbar { width: 25px; }
+  ::-webkit-scrollbar-thumb {border: 4px solid var(--surface2); border-radius: 15px; }
+  ::-webkit-scrollbar-track { border-radius: 15px 0 0 15px; }
 
   html, body {
     overflow: hidden;
