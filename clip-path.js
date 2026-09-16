@@ -113,13 +113,13 @@ function defaultMin(unit) {
   if (unit === '%')   return 0;
   if (unit === 'deg') return 0;
   if (unit === 'px')  return 0;
-  return -200;
+  return -500;
 }
 function defaultMax(unit) {
   if (unit === '%')   return 100;
   if (unit === 'deg') return 360;
   if (unit === 'px')  return 500;
-  return 200;
+  return 500;
 }
 
 // Rebuild the string with updated token values, then re-parse positions
