@@ -481,7 +481,7 @@ function buildSliders() {
       tokens[i].num = v;
       document.getElementById(`val-${i}`).textContent = v + tokens[i].unit;
       currentValue = rebuildString(currentValue, tokens);
-      codeArea.value = currentValue;
+      if (document.activeElement !== codeArea) codeArea.value = currentValue;
       apply(currentValue, true);
       showOverlay(i);
       block.classList.add('editing');
