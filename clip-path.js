@@ -130,7 +130,8 @@ function rebuildString(str, tokens) {
   for (const t of tokens) {
     result += str.slice(cursor, t.index);
     const numStr = String(Math.round(t.num * 100) / 100);
-    t._newIndex = result.length;          // track where this token lands
+    t._newIndex  = result.length;
+    t._newLength = numStr.length + t.unit.length;   // length of what was actually written
     result += numStr + t.unit;
     cursor = t.index + t.length;
   }
@@ -139,8 +140,9 @@ function rebuildString(str, tokens) {
   // Patch each token's index/length to match its position in the rebuilt string
   for (const t of tokens) {
     t.index  = t._newIndex;
-    t.length = String(t.num).length + t.unit.length;
+    t.length = t._newLength;
     delete t._newIndex;
+    delete t._newLength;
   }
 
   return result;
@@ -177,6 +179,8 @@ function toPercent(num, unit, dim) {
 // Returns array of {x, y, tokenIndices:[i,j]} — tokenIndices are which tokens
 // in the global `tokens` array correspond to this dot.
 function resolveVertexPoints(val, toks, boxW, boxH) {
+  if (!val || !toks || toks.length === 0) return [];
+
   const v = val.trim().toLowerCase();
   const points = [];
 
@@ -253,7 +257,7 @@ function resolveVertexPoints(val, toks, boxW, boxH) {
       if (cmd === 'M' || cmd === 'L') {
         for (let i = 0; i + 1 < nums.length; i += 2) {
           cx = nums[i]; cy = nums[i+1];
-          points.push({ x: toBoxPct(cx, false), y: toBoxPct(cy, true), tokenIndices: [] });
+          points.push({ x: toBoxPct(cx), y: toBoxPct(cy), tokenIndices: [] });
         }
       } else if (cmd === 'm' || cmd === 'l') {
         for (let i = 0; i + 1 < nums.length; i += 2) {
@@ -309,27 +313,21 @@ function renderOverlay(activeIdx) {
   const boxH = box.offsetHeight || 260;
   const pts = resolveVertexPoints(currentValue, tokens, boxW, boxH);
 
-  // If dot count changed (preset switch etc), rebuild from scratch
-  if (pts.length !== overlayDots.length) {
-    vertexOverlay.innerHTML = '';
-    overlayDots = [];
-    pts.forEach(pt => {
-      const dot = document.createElement('div');
-      dot.className = 'v-dot';
-      dot.style.left = pt.x + '%';
-      dot.style.top  = pt.y + '%';
-      vertexOverlay.appendChild(dot);
-      overlayDots.push({ dot, pt });
-    });
-  }
+  // Clear container to properly synchronize dynamic custom inputs
+  vertexOverlay.innerHTML = '';
+  overlayDots = [];
 
-  // Update positions and active state in-place — no DOM teardown
-  overlayDots.forEach(({ dot }, pi) => {
-    const pt = pts[pi];
+  pts.forEach(pt => {
+    const dot = document.createElement('div');
+    dot.className = 'v-dot';
     dot.style.left = pt.x + '%';
     dot.style.top  = pt.y + '%';
+    
     const isActive = activeIdx >= 0 && pt.tokenIndices.includes(activeIdx);
     dot.classList.toggle('active', isActive);
+
+    vertexOverlay.appendChild(dot);
+    overlayDots.push({ dot, pt });
   });
 }
 
@@ -418,10 +416,14 @@ function apply(val, fromSlider = false) {
   outputEl.innerHTML =
     `<span class="oc-prop">clip-path</span>: <span class="oc-val">${esc(val)}</span>;`;
 
-  // only re-parse + rebuild sliders when NOT coming from a slider (avoid flicker)
-  if (!fromSlider) {
+   if (!fromSlider) {
+    // Full rebuild: re-parse tokens and recreate slider DOM
     tokens = parseTokens(val);
     buildSliders();
+  } else {
+    // Slider move: re-parse token positions only (no DOM rebuild) so
+    // subsequent moves stay correctly indexed into currentValue
+    tokens = parseTokens(val);
   }
 
   // update textarea unless we're typing in it
@@ -566,7 +568,13 @@ function buildSliders() {
 
 // ── Code area ─────────────────────────────────────────────────────────────────
 codeArea.addEventListener('input', () => {
-  const v = codeArea.value;
+  // Strip "clip-path:" prefix and trailing ";" if the user pastes the full declaration
+  let v = codeArea.value.trim();
+  const prefixMatch = v.match(/^clip-path\s*:\s*/i);
+  if (prefixMatch) {
+    v = v.slice(prefixMatch[0].length).replace(/\s*;\s*$/, '').trim();
+    codeArea.value = v;
+  }
   currentValue = v;
   // deactivate preset badge
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
