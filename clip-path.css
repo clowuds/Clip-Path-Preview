@@ -374,7 +374,7 @@ header h1 { font-size: 14px; font-weight: 600; }
   gap: 8px;
 }
 input[type=range] {
-  -webkit-appearance: none;
+  appearance: none;
   flex: 1;
   height: 3px;
   background: var(--border);
@@ -602,4 +602,5 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
     z-index: 10;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.35);
   }
+  #output-code { display: none; }
 }
