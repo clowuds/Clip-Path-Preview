@@ -371,6 +371,20 @@ function renderOverlay(activeIdx) {
         dot.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
 
+        // Highlight all slider blocks that correspond to this dot's tokens
+        const setBlocksEditing = (on) => {
+          pt.tokenIndices.forEach((ti, k) => {
+            const slEl = document.getElementById(`sr-${ti}`);
+            const b = slEl && slEl.closest('.slider-block');
+            if (b) {
+              b.classList.toggle('editing', on);
+              // Scroll first affected block into view on drag start
+              if (on && k === 0) b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+          });
+        };
+        setBlocksEditing(true);
+
         const onMove = (mx, my) => {
           const dx = ((mx - startX) / rect.width)  * 100; // in %
           const dy = ((my - startY) / rect.height) * 100;
@@ -421,6 +435,7 @@ function renderOverlay(activeIdx) {
         const onUp = () => {
           dot.style.cursor = 'grab';
           document.body.style.userSelect = '';
+          setBlocksEditing(false);
           document.removeEventListener('mousemove', onMouseMove);
           document.removeEventListener('mouseup',   onUp);
           document.removeEventListener('touchmove', onTouchMove);
@@ -453,10 +468,7 @@ function showOverlay(activeIdx) {
 }
 
 function hideOverlay() {
-  overlayTimer = setTimeout(() => {
-    vertexOverlay.innerHTML = '';
-    overlayDots = [];
-  }, 800);
+  // Dots stay visible permanently; nothing to hide.
 }
 
 // ── Path scaling ──────────────────────────────────────────────────────────────
@@ -601,12 +613,13 @@ function buildSliders() {
       apply(currentValue, true);
       showOverlay(i);
       block.classList.add('editing');
+      // Clear any pending hide so dragging a slider never kills the dots mid-use.
       clearTimeout(block._editTimer);
-      block._editTimer = setTimeout(() => {
-        block.classList.remove('editing');
-        hideOverlay();
-      }, 600);
     });
+
+    // Editing highlight clears when the slider loses focus, but overlay stays.
+    const sliderEl = document.getElementById(`sr-${i}`);
+    sliderEl.addEventListener('blur', () => block.classList.remove('editing'));
 
     // direct value input
     const valInput = document.getElementById(`val-${i}`);
